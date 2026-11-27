@@ -646,6 +646,46 @@ if(confirm('Apagar todo o histórico de pedidos? Isto só apaga neste dispositiv
 }
 });
 }
+ // KIRA: ler preços e pacotes do Supabase
+function syncCatalog(){
+if(!window.db)return;
+Promise.all([
+window.db.from('games').select('id,slug,name,category').eq('is_active',true),
+window.db.from('products').select('id,game_id,name,price_mt,is_active').order('id')
+]).then(function(res){
+if(res[0].error||res[1].error){console.warn('Supabase:',res[0].error||res[1].error);return;}
+var dbGames=res[0].data||[],dbProducts=res[1].data||[];
+if(!dbGames.length||!dbProducts.length)return;
+var novos=[];
+GAMES.forEach(function(g){
+var dg=dbGames.filter(function(x){return x.slug===g.id;})[0];
+if(!dg)return;
+var rest=dbProducts.filter(function(x){return x.game_id===dg.id&&x.is_active!==false&&Number(x.price_mt)>0;});
+var packs=[];
+g.packs.forEach(function(p){
+for(var i=0;i<rest.length;i++){
+var n=rest[i].name;
+if(p.label?n===p.label:n.indexOf(p.d+' ')===0){
+packs.push(Object.assign({},p,{p:Number(rest[i].price_mt)}));
+rest.splice(i,1);
+return;
+}
+}
+});
+rest.forEach(function(x){packs.push({d:parseInt(x.name,10)||0,p:Number(x.price_mt),label:x.name});});
+if(packs.length)novos.push(Object.assign({},g,{name:dg.name,cat:dg.category||g.cat,packs:packs}));
+});
+if(!novos.length)return;
+GAMES=novos;
+var ffEl=$('#ff-packs');if(ffEl)ffEl.innerHTML='';
+renderFFQuick();
+var feat=$('#featured-games');
+if(feat)feat.parentNode.replaceChild(feat.cloneNode(false),feat);
+renderFeatured();
+renderGames();
+}).catch(function(e){console.warn('Supabase:',e);});
+}
+document.addEventListener('DOMContentLoaded',syncCatalog); 
 renderGames();
 renderOrders();
 })();
