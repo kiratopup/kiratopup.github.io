@@ -569,17 +569,29 @@ shNext.textContent='Confirmar e abrir WhatsApp';
 shNext.disabled=true;
 } else {
 if(!state.pay)return;
+  var game=state.game,pack=state.pack;
 var order={
 code:newCode(),
-game:state.game.name,
-pack:packLabel(state.game,state.pack),
+game:game.name,
+pack:packLabel(game,pack),
 playerId:state.playerId,
 zoneId:state.zoneId,
 pay:state.pay,
-total:state.pack.p,
+total:pack.p,
 status:0,
 createdAt:Date.now()
 };
+shNext.disabled=true;
+shBack.disabled=true;
+shNext.textContent='A guardar o pedido...';
+var done=false;
+var timer=setTimeout(function(){finish(null);},8000);
+function finish(saved){
+if(done)return;
+done=true;
+clearTimeout(timer);
+if(saved){order.code=saved.order_code;order.total=Number(saved.price_mt);}
+shBack.disabled=false;
 var arr=loadOrders();
 arr.unshift(order);
 saveOrders(arr);
@@ -587,6 +599,24 @@ closeSheet();
 renderOrders();
 showView('pedidos');
 window.location.href=waLink(order);
+}
+if(!window.db){finish(null);return;}
+window.db.from('games').select('id').eq('slug',game.id).single()
+.then(function(r){
+if(r.error)throw r.error;
+return window.db.from('products').select('id,name').eq('game_id',r.data.id).eq('is_active',true);
+})
+.then(function(r){
+if(r.error)throw r.error;
+var found=r.data.filter(function(x){return pack.label?x.name===pack.label:x.name.indexOf(pack.d+' ')===0;})[0];
+if(!found)throw new Error('Pacote nao encontrado');
+return window.db.rpc('create_order',{p_product_id:found.id,p_player_id:order.playerId,p_zone_id:order.zoneId||null,p_payment:order.pay});
+})
+.then(function(r){
+if(r.error)throw r.error;
+finish(r.data);
+})
+.catch(function(e){console.warn('Supabase:',e);finish(null);});
 }
 });
 }
