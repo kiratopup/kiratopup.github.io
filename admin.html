@@ -504,6 +504,24 @@ button.good{background:#065f46}
     $('login-msg').textContent = 'Sessão terminada.';
   });
 
+  $('refresh-btn').addEventListener('click', loadAll);
+
+  ['f-search', 'f-status', 'f-period'].forEach(function (id) {
+    $(id).addEventListener(id === 'f-search' ? 'input' : 'change', renderOrders);
+  });
+
+  $('orders').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-order]');
+    if (b) setStatus(b.getAttribute('data-order'), b.getAttribute('data-status'));
+  });
+
+  $('products').addEventListener('click', function (ev) {
+    var p = ev.target.closest('button[data-price]');
+    if (p) { changePrice(p.getAttribute('data-price')); return; }
+    var t = ev.target.closest('button[data-toggle]');
+    if (t) toggleProduct(t.getAttribute('data-toggle'));
+  });
+
   db.auth.onAuthStateChange(function (event) {
     if (event === 'SIGNED_OUT' && !manualLogout) showSection('login');
   });
