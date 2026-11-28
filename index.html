@@ -641,6 +641,7 @@ shNext.disabled=!idOk();
 }
 });
 }
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function renderOrders(){
 var el=$('#orders');
 if(!el)return;
@@ -654,15 +655,15 @@ var payLabel=o.pay==='mpesa'?'M-Pesa':'e-Mola';
 var stLabel=STATUS[o.status]||'—';
 return '<article class="ord">'
 +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">'
-+'<b>'+o.code+'</b><span class="st s'+o.status+'">'+stLabel+'</span></div>'
++'<b>'+esc(o.code)+'</b><span class="st s'+esc(o.status)+'">'+esc(stLabel)+'</span></div>'
 +'<dl>'
-+'<dt>Jogo</dt><dd>'+o.game+'</dd>'
-+'<dt>Pacote</dt><dd>'+o.pack+'</dd>'
-+'<dt>ID</dt><dd>'+o.playerId+(o.zoneId?' ('+o.zoneId+')':'')+'</dd>'
++'<dt>Jogo</dt><dd>'+esc(o.game)+'</dd>'
++'<dt>Pacote</dt><dd>'+esc(o.pack)+'</dd>'
++'<dt>ID</dt><dd>'+esc(o.playerId)+(o.zoneId?' ('+esc(o.zoneId)+')':'')+'</dd>'
 +'<dt>Pagamento</dt><dd>'+payLabel+'</dd>'
 +'<dt>Total</dt><dd>'+fmtMZN(o.total)+'</dd>'
 +'</dl>'
-+'<div style="display:flex;gap:8px;margin-top:12px"><a class="btn wa" href="'+waLink(o)+'" target="_blank" rel="noopener" style="flex:1;display:flex;justify-content:center;align-items:center;text-decoration:none">Enviar no WhatsApp</a><button class="btn g" data-del="'+o.code+'" aria-label="Apagar pedido '+o.code+'" style="width:auto;flex:none;padding:0 16px">Apagar</button></div>'
++'<div style="display:flex;gap:8px;margin-top:12px"><a class="btn wa" href="'+esc(waLink(o))+'" target="_blank" rel="noopener" style="flex:1;display:flex;justify-content:center;align-items:center;text-decoration:none">Enviar no WhatsApp</a><button class="btn g" data-del="'+esc(o.code)+'" aria-label="Apagar pedido '+esc(o.code)+'" style="width:auto;flex:none;padding:0 16px">Apagar</button></div>'
 +'</article>';
 }).join('');
 }
