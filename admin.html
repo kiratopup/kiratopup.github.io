@@ -46,6 +46,11 @@ button.good{background:#065f46}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);padding:12px 16px;border-radius:12px;font-size:14px;max-width:90%;z-index:9}
 .toast.ok{color:var(--ok)}
 .toast.err{color:var(--err)}
+.banner{background:#7f1d1d;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700;font-size:14px;margin-bottom:12px}
+.bar-row{display:grid;grid-template-columns:110px 1fr 64px;gap:8px;align-items:center;font-size:13px;margin:7px 0}
+.bar{height:10px;background:var(--acc);border-radius:6px}
+.bar-val{text-align:right;color:var(--mut)}
+.real{border:1px dashed var(--line)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -142,6 +147,15 @@ button.good{background:#065f46}
 
     <h2>Produtos e preços</h2>
     <div id="products"></div>
+
+    <h2>Simulação de tráfego</h2>
+    <div class="banner">DADOS SIMULADOS — NÃO REPRESENTAM VISITAS REAIS</div>
+    <div class="card real" style="margin-bottom:12px">
+      <strong>Estatísticas reais</strong>
+      <p class="muted" style="margin:6px 0 0">Ainda não configurado. Para medir visitas reais é preciso ligar uma ferramenta de análise, com aviso de privacidade. Até lá, não mostramos números.</p>
+    </div>
+    <div class="row"><button type="button" id="sim-btn">Gerar simulação de 10.000 visitantes</button></div>
+    <div id="sim-out" style="margin-top:14px"></div>
   </section>
 
 </main>
@@ -521,6 +535,93 @@ button.good{background:#065f46}
     var t = ev.target.closest('button[data-toggle]');
     if (t) toggleProduct(t.getAttribute('data-toggle'));
   });
+
+  // ---- Simulação: só no navegador, sem rede e sem base de dados ----
+  function rng(seed) {
+    var x = seed >>> 0;
+    return function () {
+      x ^= x << 13; x >>>= 0;
+      x ^= x >>> 17;
+      x ^= x << 5; x >>>= 0;
+      return x / 4294967296;
+    };
+  }
+
+  function pickW(r, list) {
+    var t = r(), acc = 0;
+    for (var i = 0; i < list.length; i++) {
+      acc += list[i][1];
+      if (t < acc) return list[i][0];
+    }
+    return list[list.length - 1][0];
+  }
+
+  var SIM_DEVICES = [['Android', 0.52], ['iPhone', 0.28], ['Computador', 0.14], ['Tablet', 0.06]];
+  var SIM_PAGES = [['Início', 0.40], ['Free Fire', 0.22], ['PUBG Mobile', 0.08], ['MLBB', 0.08], ['Pedidos', 0.12], ['Ajuda', 0.10]];
+  var SIM_REGIONS = [['Região A', 0.5], ['Região B', 0.3], ['Região C', 0.2]];
+
+  function simulate(n) {
+    var r = rng(20261128);
+    var days = new Array(30).fill(0);
+    var hours = new Array(24).fill(0);
+    var devices = {}, pages = {}, regions = {};
+    var views = 0;
+    for (var i = 0; i < n; i++) {
+      days[Math.floor(r() * 30)]++;
+      var h = r() < 0.35 ? 18 + Math.floor(r() * 5) : Math.floor(r() * 24);
+      hours[h]++;
+      var dev = pickW(r, SIM_DEVICES);
+      devices[dev] = (devices[dev] || 0) + 1;
+      var reg = pickW(r, SIM_REGIONS);
+      regions[reg] = (regions[reg] || 0) + 1;
+      var pv = 1 + Math.floor(r() * 4);
+      views += pv;
+      for (var k = 0; k < pv; k++) {
+        var pg = pickW(r, SIM_PAGES);
+        pages[pg] = (pages[pg] || 0) + 1;
+      }
+    }
+    return { n: n, views: views, days: days, hours: hours, devices: devices, pages: pages, regions: regions };
+  }
+
+  function barBlock(title, entries, maxKeep) {
+    var max = 1;
+    entries.forEach(function (e) { if (e[1] > max) max = e[1]; });
+    var box = el('div', { cls: 'card', style: 'margin-bottom:12px' }, [el('strong', { text: title })]);
+    entries.slice(0, maxKeep || entries.length).forEach(function (e) {
+      box.appendChild(el('div', { cls: 'bar-row' }, [
+        el('span', { text: e[0] }),
+        el('div', { cls: 'bar', style: 'width:' + Math.round((e[1] / max) * 100) + '%' }),
+        el('span', { cls: 'bar-val', text: e[1].toLocaleString('pt-MZ') })
+      ]));
+    });
+    return box;
+  }
+
+  function sortedEntries(obj) {
+    return Object.keys(obj).map(function (k) { return [k, obj[k]]; })
+      .sort(function (a, b) { return b[1] - a[1]; });
+  }
+
+  function renderSimulation() {
+    var out = $('sim-out');
+    out.textContent = '';
+    var d = simulate(10000);
+    out.appendChild(el('div', { cls: 'banner', text: 'SIMULAÇÃO: ' + d.n.toLocaleString('pt-MZ') + ' visitantes fictícios' }));
+    out.appendChild(el('div', { cls: 'stats', style: 'margin-bottom:12px' }, [
+      el('div', { cls: 'stat' }, [el('span', { text: 'Visitantes simulados' }), el('b', { text: d.n.toLocaleString('pt-MZ') })]),
+      el('div', { cls: 'stat' }, [el('span', { text: 'Páginas vistas simuladas' }), el('b', { text: d.views.toLocaleString('pt-MZ') })])
+    ]));
+    out.appendChild(barBlock('Visitantes por dia (últimos 30 dias, simulado)',
+      d.days.map(function (v, i) { return ['Dia ' + (i + 1), v]; }).reverse().reverse(), 30));
+    out.appendChild(barBlock('Visitantes por hora (simulado)',
+      d.hours.map(function (v, i) { return [String(i).padStart(2, '0') + 'h', v]; })));
+    out.appendChild(barBlock('Dispositivos (simulado)', sortedEntries(d.devices)));
+    out.appendChild(barBlock('Páginas mais vistas (simulado)', sortedEntries(d.pages)));
+    out.appendChild(barBlock('Origem ilustrativa (simulado)', sortedEntries(d.regions)));
+  }
+
+  $('sim-btn').addEventListener('click', renderSimulation);
 
   db.auth.onAuthStateChange(function (event) {
     if (event === 'SIGNED_OUT' && !manualLogout) showSection('login');
