@@ -76,6 +76,34 @@ button.good{background:#065f46}
     </form>
   </section>
 
+  <!-- MFA: configurar código -->
+  <section id="mfa-enroll" class="card login" hidden>
+    <h1>Verificação em dois passos</h1>
+    <p class="sub">Faz isto uma vez. Usa o Google Authenticator ou o Microsoft Authenticator.</p>
+    <div style="background:#fff;border-radius:12px;padding:10px;display:inline-block"><img id="mfa-qr" alt="QR code" width="200" height="200"></div>
+    <p class="muted">Não consegues ler o QR? Escreve este código na app:</p>
+    <p><code id="mfa-secret" style="word-break:break-all"></code></p>
+    <form id="mfa-enroll-form" autocomplete="off">
+      <label for="mfa-code-1">Código de 6 dígitos da app</label>
+      <input id="mfa-code-1" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <div class="row" style="margin-top:16px"><button type="submit" class="full">Confirmar</button></div>
+      <div id="mfa-enroll-msg" class="muted" role="status" style="min-height:20px;margin-top:10px"></div>
+    </form>
+  </section>
+
+  <!-- MFA: pedir código -->
+  <section id="mfa-verify" class="card login" hidden>
+    <h1>Verificação</h1>
+    <p class="sub">Escreve o código de 6 dígitos da tua app de autenticação.</p>
+    <form id="mfa-verify-form" autocomplete="off">
+      <label for="mfa-code-2">Código</label>
+      <input id="mfa-code-2" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <div class="row" style="margin-top:16px"><button type="submit" class="full">Entrar</button></div>
+      <div id="mfa-verify-msg" class="muted" role="status" style="min-height:20px;margin-top:10px"></div>
+    </form>
+    <div class="row" style="margin-top:12px"><button type="button" class="ghost full" id="mfa-cancel">Cancelar e sair</button></div>
+  </section>
+
   <!-- PAINEL -->
   <section id="panel" hidden>
     <header>
@@ -170,28 +198,66 @@ button.good{background:#065f46}
     toastTimer = setTimeout(function () { t.hidden = true; }, 3500);
   }
 
+  var SECTIONS = ['gate', 'login', 'mfa-enroll', 'mfa-verify', 'panel'];
+  var pendingFactorId = null;
+
   function showSection(which) {
-    $('gate').hidden = which !== 'gate';
-    $('login-box').hidden = which !== 'login';
-    $('panel').hidden = which !== 'panel';
+    SECTIONS.forEach(function (s) { $(s).hidden = s !== which; });
   }
 
-  async function isAdmin() {
-    var r = await db.rpc('is_admin');
+  async function isAdminMember() {
+    var r = await db.rpc('is_admin_member');
     if (r.error) throw r.error;
     return r.data === true;
+  }
+
+  async function startEnrollment() {
+    var f = await db.auth.mfa.listFactors();
+    if (f.error) throw f.error;
+    var stale = (f.data.totp || []).filter(function (x) { return x.status !== 'verified'; });
+    for (var i = 0; i < stale.length; i++) {
+      await db.auth.mfa.unenroll({ factorId: stale[i].id });
+    }
+    var e = await db.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'KIRA admin' });
+    if (e.error) throw e.error;
+    pendingFactorId = e.data.id;
+    $('mfa-qr').src = e.data.totp.qr_code;
+    $('mfa-secret').textContent = e.data.totp.secret;
+    $('mfa-enroll-msg').textContent = '';
+    showSection('mfa-enroll');
+    $('mfa-code-1').focus();
   }
 
   async function enter() {
     try {
       var s = await db.auth.getSession();
       if (!s.data.session) { showSection('gate'); return; }
-      if (!(await isAdmin())) {
+
+      if (!(await isAdminMember())) {
         await db.auth.signOut();
         showSection('login');
         $('login-msg').textContent = 'Esta conta não tem acesso de administrador.';
         return;
       }
+
+      var aal = await db.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal.error) throw aal.error;
+
+      if (aal.data.currentLevel !== 'aal2') {
+        var f = await db.auth.mfa.listFactors();
+        if (f.error) throw f.error;
+        var verified = (f.data.totp || []).filter(function (x) { return x.status === 'verified'; })[0];
+        if (verified) {
+          pendingFactorId = verified.id;
+          $('mfa-verify-msg').textContent = '';
+          showSection('mfa-verify');
+          $('mfa-code-2').focus();
+        } else {
+          await startEnrollment();
+        }
+        return;
+      }
+
       $('who').textContent = 'Sessão iniciada como ' + s.data.session.user.email;
       showSection('panel');
       await loadAll();
@@ -394,28 +460,54 @@ button.good{background:#065f46}
   });
 
   var manualLogout = false;
-  $('logout-btn').addEventListener('click', async function () {
+
+  $('mfa-enroll-form').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    $('mfa-enroll-msg').textContent = 'A verificar...';
+    try {
+      var r = await db.auth.mfa.challengeAndVerify({
+        factorId: pendingFactorId,
+        code: $('mfa-code-1').value.trim()
+      });
+      if (r.error) throw r.error;
+      $('mfa-code-1').value = '';
+      await enter();
+    } catch (e) {
+      console.warn('MFA:', e);
+      $('mfa-enroll-msg').textContent = 'Código incorreto. Confirma a hora do telemóvel e tenta de novo.';
+    }
+  });
+
+  $('mfa-verify-form').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    $('mfa-verify-msg').textContent = 'A verificar...';
+    try {
+      var r = await db.auth.mfa.challengeAndVerify({
+        factorId: pendingFactorId,
+        code: $('mfa-code-2').value.trim()
+      });
+      if (r.error) throw r.error;
+      $('mfa-code-2').value = '';
+      await enter();
+    } catch (e) {
+      console.warn('MFA:', e);
+      $('mfa-verify-msg').textContent = 'Código incorreto ou expirado. Usa o código atual da app.';
+    }
+  });
+
+  $('mfa-cancel').addEventListener('click', async function () {
     manualLogout = true;
     await db.auth.signOut();
     manualLogout = false;
     showSection('login');
   });
 
-  $('refresh-btn').addEventListener('click', loadAll);
-  ['f-search', 'f-status', 'f-period'].forEach(function (id) {
-    $(id).addEventListener(id === 'f-search' ? 'input' : 'change', renderOrders);
-  });
-
-  $('orders').addEventListener('click', function (ev) {
-    var b = ev.target.closest('button[data-order]');
-    if (b) setStatus(b.getAttribute('data-order'), b.getAttribute('data-status'));
-  });
-
-  $('products').addEventListener('click', function (ev) {
-    var p = ev.target.closest('button[data-price]');
-    if (p) { changePrice(p.getAttribute('data-price')); return; }
-    var t = ev.target.closest('button[data-toggle]');
-    if (t) toggleProduct(t.getAttribute('data-toggle'));
+  $('logout-btn').addEventListener('click', async function () {
+    manualLogout = true;
+    await db.auth.signOut();
+    manualLogout = false;
+    showSection('login');
+    $('login-msg').textContent = 'Sessão terminada.';
   });
 
   db.auth.onAuthStateChange(function (event) {
