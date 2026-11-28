@@ -188,11 +188,12 @@ button.good{background:#065f46}
     toastTimer = setTimeout(function () { t.hidden = true; }, 3500);
   }
 
-  var SECTIONS = ['login', 'mfa-enroll', 'mfa-verify', 'panel'];
+  var SECTIONS = ['login-box', 'mfa-enroll', 'mfa-verify', 'panel'];
   var pendingFactorId = null;
 
   function showSection(which) {
-    SECTIONS.forEach(function (s) { $(s).hidden = s !== which; });
+    var target = which === 'login' ? 'login-box' : which;
+    SECTIONS.forEach(function (s) { $(s).hidden = s !== target; });
   }
 
   async function isAdminMember() {
