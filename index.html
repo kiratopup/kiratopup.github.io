@@ -571,7 +571,6 @@ shNext.disabled=true;
 if(!state.pay)return;
   var game=state.game,pack=state.pack;
 var order={
-code:newCode(),
 game:game.name,
 pack:packLabel(game,pack),
 playerId:state.playerId,
@@ -583,14 +582,36 @@ createdAt:Date.now()
 };
 shNext.disabled=true;
 shBack.disabled=true;
-shNext.textContent='A guardar o pedido...';
-var done=false;
-var timer=setTimeout(function(){finish(null);},8000);
-function finish(saved){
-if(done)return;
-done=true;
-clearTimeout(timer);
-if(saved){order.code=saved.order_code;order.total=Number(saved.price_mt);}
+shNext.textContent='A registar o pedido...';
+function withTimeout(p){
+return Promise.race([p,new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},15000);})]);
+}
+function fail(){
+shNext.disabled=false;
+shBack.disabled=false;
+shNext.textContent='Tentar novamente';
+alert('Não foi possível registar o pedido. Verifica a ligação e tenta novamente. Nada foi enviado.');
+}
+if(!window.db){fail();return;}
+withTimeout(window.db.from('games').select('id').eq('slug',game.id).single())
+.then(function(r){
+if(r.error)throw r.error;
+return withTimeout(window.db.from('products').select('id,name').eq('game_id',r.data.id).eq('is_active',true));
+})
+.then(function(r){
+if(r.error)throw r.error;
+var found=r.data.filter(function(x){return pack.label?x.name===pack.label:x.name.indexOf(pack.d+' ')===0;})[0];
+if(!found)throw new Error('Pacote nao encontrado');
+return withTimeout(window.db.rpc('create_order',{p_product_id:found.id,p_player_id:order.playerId,p_zone_id:order.zoneId||null,p_payment:order.pay}));
+})
+.then(function(r){
+if(r.error)throw r.error;
+if(!r.data||!r.data.order_code)throw new Error('Sem codigo do servidor');
+return r.data;
+})
+.then(function(data){
+order.code=data.order_code;
+order.total=Number(data.price_mt);
 shBack.disabled=false;
 var arr=loadOrders();
 arr.unshift(order);
@@ -599,24 +620,10 @@ closeSheet();
 renderOrders();
 showView('pedidos');
 window.location.href=waLink(order);
-}
-if(!window.db){finish(null);return;}
-window.db.from('games').select('id').eq('slug',game.id).single()
-.then(function(r){
-if(r.error)throw r.error;
-return window.db.from('products').select('id,name').eq('game_id',r.data.id).eq('is_active',true);
-})
-.then(function(r){
-if(r.error)throw r.error;
-var found=r.data.filter(function(x){return pack.label?x.name===pack.label:x.name.indexOf(pack.d+' ')===0;})[0];
-if(!found)throw new Error('Pacote nao encontrado');
-return window.db.rpc('create_order',{p_product_id:found.id,p_player_id:order.playerId,p_zone_id:order.zoneId||null,p_payment:order.pay});
-})
-.then(function(r){
-if(r.error)throw r.error;
-finish(r.data);
-})
-.catch(function(e){console.warn('Supabase:',e);finish(null);});
+},function(e){
+console.warn('Supabase:',e);
+fail();
+});
 }
 });
 }
