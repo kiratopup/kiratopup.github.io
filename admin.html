@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Administração · KIRA TOP UP</title>
+<style>
+:root{--bg:#0f0b1a;--card:#1a1428;--txt:#f3f0ff;--mut:#a79cc4;--acc:#7c3aed;--err:#f87171;--ok:#34d399;--line:#2d2445}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+main{max-width:420px;margin:0 auto;padding:24px 16px}
+h1{font-size:22px;margin:8px 0 4px}
+.sub{color:var(--mut);margin:0 0 20px;font-size:14px}
+.card{background:var(--card);border-radius:14px;padding:20px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#120e20;color:var(--txt);font-size:16px}
+button{width:100%;margin-top:18px;padding:13px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:16px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}
+button.secondary{background:transparent;border:1px solid var(--line);color:var(--mut);margin-top:12px}
+.msg{margin-top:14px;font-size:14px;min-height:20px}
+.msg.err{color:var(--err)}
+.msg.ok{color:var(--ok)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>KIRA TOP UP · Administração</h1>
+  <p class="sub">Área privada. Só para o responsável da loja.</p>
+
+  <section id="login-box" class="card" hidden>
+    <form id="login-form" autocomplete="on">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required autocomplete="username">
+      <label for="password">Palavra-passe</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password">
+      <button type="submit" id="login-btn">Entrar</button>
+      <div id="login-msg" class="msg" role="status"></div>
+    </form>
+  </section>
+
+  <section id="panel" class="card" hidden>
+    <p>Sessão iniciada como <strong id="who"></strong>.</p>
+    <p class="sub">O painel de encomendas e produtos será adicionado no próximo passo.</p>
+    <button type="button" id="logout-btn" class="secondary">Terminar sessão</button>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  var SUPABASE_URL = "https://tgvyfodlmjheblzkeczx.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_pRwONHqgNXRA18Ex_uk8bA_lsFjKb_S";
+  var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  var loginBox = document.getElementById('login-box');
+  var panel = document.getElementById('panel');
+  var msg = document.getElementById('login-msg');
+  var btn = document.getElementById('login-btn');
+  var form = document.getElementById('login-form');
+  var pwd = document.getElementById('password');
+
+  function show(which) {
+    loginBox.hidden = which !== 'login';
+    panel.hidden = which !== 'panel';
+  }
+
+  function say(text, kind) {
+    msg.textContent = text;
+    msg.className = 'msg' + (kind ? ' ' + kind : '');
+  }
+
+  async function isAdmin() {
+    var r = await db.rpc('is_admin');
+    if (r.error) throw r.error;
+    return r.data === true;
+  }
+
+  async function enter() {
+    try {
+      var s = await db.auth.getSession();
+      if (!s.data.session) { show('login'); return; }
+      var ok = await isAdmin();
+      if (!ok) {
+        await db.auth.signOut();
+        show('login');
+        say('Esta conta não tem acesso de administrador.', 'err');
+        return;
+      }
+      document.getElementById('who').textContent = s.data.session.user.email;
+      show('panel');
+    } catch (e) {
+      console.warn('Admin:', e);
+      show('login');
+      say('Não foi possível verificar a sessão. Tenta novamente.', 'err');
+    }
+  }
+
+  form.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    btn.disabled = true;
+    say('A verificar...');
+    try {
+      var r = await db.auth.signInWithPassword({
+        email: document.getElementById('email').value.trim(),
+        password: pwd.value
+      });
+      if (r.error) throw r.error;
+      pwd.value = '';
+      await enter();
+      if (!panel.hidden) say('');
+    } catch (e) {
+      console.warn('Login:', e);
+      say('Email ou palavra-passe incorretos, ou sem ligação.', 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', async function () {
+    await db.auth.signOut();
+    show('login');
+    say('Sessão terminada.', 'ok');
+  });
+
+  db.auth.onAuthStateChange(function (event) {
+    if (event === 'SIGNED_OUT') show('login');
+  });
+
+  show('login');
+  enter();
+})();
+</script>
+</body>
+</html>
