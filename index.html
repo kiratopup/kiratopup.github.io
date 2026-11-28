@@ -589,11 +589,14 @@ function withTimeout(p){
 return Promise.race([p,new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},15000);})]);
 }
 function fail(){
+if(window.turnstile)window.turnstile.reset();
 shNext.disabled=false;
 shBack.disabled=false;
 shNext.textContent='Tentar novamente';
 alert('Não foi possível registar o pedido. Verifica a ligação e tenta novamente. Nada foi enviado.');
 }
+var tk=(window.turnstile&&window.turnstile.getResponse())||'';
+if(!tk){shNext.disabled=false;shBack.disabled=false;shNext.textContent='Tentar novamente';alert('Confirma a verificação de segurança e tenta novamente.');return;}
 if(!window.db){fail();return;}
 withTimeout(window.db.from('games').select('id').eq('slug',game.id).single())
 .then(function(r){
@@ -604,7 +607,7 @@ return withTimeout(window.db.from('products').select('id,name').eq('game_id',r.d
 if(r.error)throw r.error;
 var found=r.data.filter(function(x){return pack.label?x.name===pack.label:x.name.indexOf(pack.d+' ')===0;})[0];
 if(!found)throw new Error('Pacote nao encontrado');
-return withTimeout(window.db.rpc('create_order',{p_product_id:found.id,p_player_id:order.playerId,p_zone_id:order.zoneId||null,p_payment:order.pay}));
+return withTimeout(fetch('https://tgvyfodlmjheblzkeczx.supabase.co/functions/v1/create-order-secure',{method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_KEY},body:JSON.stringify({turnstileToken:tk,productId:found.id,playerId:order.playerId,zoneId:order.zoneId||null,payment:order.pay})}).then(function(res){return res.json().then(function(j){return res.ok?{data:j,error:null}:{data:null,error:new Error(j.error||'erro')};});}));
 })
 .then(function(r){
 if(r.error)throw r.error;
