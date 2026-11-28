@@ -153,7 +153,10 @@ button.good{background:#065f46}
 (function () {
   var SUPABASE_URL = "https://tgvyfodlmjheblzkeczx.supabase.co";
   var SUPABASE_KEY = "sb_publishable_pRwONHqgNXRA18Ex_uk8bA_lsFjKb_S";
-  var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // Sessão só dura enquanto a aba estiver aberta: ao fechar o navegador, é preciso entrar outra vez
+  var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false }
+  });
 
   var STATUS_LABEL = { pendente: 'Pendente', pago: 'Pago', entregue: 'Entregue', cancelado: 'Cancelado' };
   var ORDERS = [];
